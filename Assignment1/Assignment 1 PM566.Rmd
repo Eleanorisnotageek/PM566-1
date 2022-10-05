@@ -1,0 +1,143 @@
+---
+title: "Assignment 1 Eleanor Bi"
+output: html_document
+date: '2022-09-21'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Q1
+
+```{r}
+library(data.table)
+pm25_2004<-fread('ad_viz_plotval_data_2004.csv')
+pm25_2019<-fread('ad_viz_plotval_data_2019.csv')
+dim(pm25_2004);dim(pm25_2019)
+colnames(pm25_2004);colnames(pm25_2019)
+sapply(pm25_2004,class);sapply(pm25_2019,class)
+
+summary(pm25_2004$`Daily Mean PM2.5 Concentration`)
+summary(pm25_2019$`Daily Mean PM2.5 Concentration`)
+```
+
+As a result, the 2004 dataset includes 19233 rows and 20 columns and the 2019 dataset includes 53156 rows and 20 columns. The colnames names and type of the columns are both shown above. Besides, the interested variable, daily mean PM2.5 concentration are summaried as mean, median, 1th and 3rd quantile, minimum and maximum. No NAs are existed in the `Daily Mean PM2.5 Concentration` variable. However, some negative values are existed, which are abnomal due to concentration of PM2.5 cannot be negative.
+
+# Q2
+
+```{r}
+pm25<-rbind(pm25_2004,pm25_2019)
+pm25$Year<-rep(c(2004,2019),c(nrow(pm25_2004),nrow(pm25_2019)))
+head(pm25)
+```
+
+# Q3
+
+```{r}
+library(leaflet)
+leaflet(data=pm25)%>%
+  addTiles()%>%
+  addCircles(~SITE_LONGITUDE, ~SITE_LATITUDE,
+             color = ~ifelse(Year==2004,'blue','red'))
+```
+
+In this figure, the blue points represent the locations of the sites for 2004 and the red points represent the locations of the sites for 2019. According to the map, it reveals that the number of sites increase obviously from 2004 to 2019. Besides, the sites for 2019 are almost located at coastal.
+
+# Q4
+
+As shown in Q1, it is found that no NAs are existed in the variable `Daily Mean PM2.5 Concentration`, but some negative values are existed in the variable. Thus the proportion of the negative values are shown as:
+
+```{r}
+library(tidyverse)
+pm25%>%mutate(neg_value=`Daily Mean PM2.5 Concentration`<0)%>%
+  group_by(neg_value)%>%summarise(prop=n()/nrow(pm25))
+```
+
+As a result, it indicates that only 0.391% values of `Daily Mean PM2.5 Concentration` are negative, which may caused by some mistakes. To investigate the temporal pattern, the date of negative values are shown as:
+
+```{r}
+pm25%>%filter(`Daily Mean PM2.5 Concentration`<0)%>%
+  mutate(month=substr(Date,1,2))%>%
+  ggplot(aes(month))+geom_bar()
+```
+
+As a result, it is revealed that the negative values are often appeares in March and April, but negative in November is lowest. 
+
+# Q5
+
+```{r}
+pm25%>%ggplot(aes(`Daily Mean PM2.5 Concentration`))+geom_histogram()
+```
+
+Firstly, the distribution of the PM2.5 concentration is investigated. As a result, the distribution is right skewed, which indicates that log-transformation is suitable here.
+
+## 1. State level
+
+```{r}
+pm25%>%filter(`Daily Mean PM2.5 Concentration`>0)%>%
+  group_by(Year)%>%
+  summarise(log_pm25_mean=mean(log(`Daily Mean PM2.5 Concentration`)),
+            log_pm25_sd=sd(log(`Daily Mean PM2.5 Concentration`)))
+
+pm25%>%filter(`Daily Mean PM2.5 Concentration`>0)%>%
+  mutate(Year=as.factor(Year))%>%
+  ggplot(aes(x=Year,y=`Daily Mean PM2.5 Concentration`))+
+  geom_boxplot()+scale_y_log10()
+```
+
+As the boxplot log-transformed shown, the level of PM2.5 is decrease from 2004 to 2019, which is also validated by the averages and standard deviances of `log(PM2.5)` calculated as summary statistic.
+
+## County level
+
+```{r}
+pm25%>%filter(`Daily Mean PM2.5 Concentration`>0)%>%
+  group_by(Year,COUNTY)%>%
+  summarise(log_pm25_mean=mean(log(`Daily Mean PM2.5 Concentration`)))%>%
+  pivot_wider(names_from = 'Year',
+              values_from=log_pm25_mean)%>%
+  mutate(diff=`2019`-`2004`)
+
+pm25%>%filter(`Daily Mean PM2.5 Concentration`>0)%>%
+  mutate(Year=as.factor(Year))%>%
+  group_by(Year,COUNTY)%>%
+  summarise(log_pm25_mean=mean(log(`Daily Mean PM2.5 Concentration`)))%>%
+  ggplot(aes(y=COUNTY,x=log_pm25_mean,colour=Year))+
+  geom_point()
+```
+
+As shown in the scatter plot, the points representing 2004 are almost located right of points representing 2019, which indicates that the PM2.5 for 2019 is lower than 2004 for most of counties. Besides, difference of log_PM2.5 between 2004 and 2019 are also calculated as summary statistic, which are almost lower than 0, which also indicates that for almost counties, PM2.5 in 2019 is lower than 2004.
+
+## Site in Los Angeles level
+
+```{r}
+pm25%>%filter(`Daily Mean PM2.5 Concentration`>0)%>%
+  group_by(Year,`Site Name`)%>%
+  summarise(log_pm25_mean=mean(log(`Daily Mean PM2.5 Concentration`)))%>%
+  pivot_wider(names_from = 'Year',
+              values_from=log_pm25_mean)%>%
+  na.omit()%>%
+  filter(`Site Name`!='')
+
+
+```
+
+Similarly in counties level, the average log_PM2.5 is calculated as summary statistic. To make the comparison reasonable, only sites with observations in both 2004 and 2019 are retained. Due to the number of sites are too many, thus heat map is used rather than scatter plot:
+
+```{r}
+pm25%>%filter(`Daily Mean PM2.5 Concentration`>0)%>%
+    group_by(Year,`Site Name`)%>%
+    summarise(log_pm25_mean=mean(log(`Daily Mean PM2.5 Concentration`)))%>%
+    pivot_wider(names_from = 'Year',
+                values_from=log_pm25_mean)%>%
+    na.omit()%>%
+    filter(`Site Name`!='')%>%
+    pivot_longer(cols=c(`2004`,`2019`),values_to='log_PM2.5')%>%
+    ggplot(aes(x=name,y=`Site Name`,fill=`log_PM2.5`))+
+  geom_tile()+
+  scale_fill_gradient(low='white',high='black')
+```
+
+As a result, the tiles representing 2019 is light than 2004, which indicates that PM2.5 in 2004 is higher than 2019.
+
+Summary, daily concentrations of PM25 has decreased from 2004 to 2019.
