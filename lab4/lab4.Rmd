@@ -1,0 +1,132 @@
+---
+title: "lab4"
+author: "Eleanor Bi"
+date: "10/5/2022"
+output: html_document
+---
+```{r, echo=TRUE}
+EVAL <- FALSE
+ECHO <- EVAL
+library(tidyverse)
+library(lubridate)
+library(data.table)
+```
+
+## 1. Read in the data
+```{r, echo=TRUE}
+if (!file.exists("met_all.gz"))
+  download.file(
+    url = "https://raw.githubusercontent.com/USCbiostats/data-science-data/master/02_met/met_all.gz",
+    destfile = "met_all.gz",
+    method   = "libcurl",
+    timeout  = 60
+    )
+met <- data.table::fread("met_all.gz")
+```
+
+## 2. Prepare the data
+```{r}
+met <- met[temp >= -17][elev == 9999.0, elev := NA]
+summary(met$temp)
+summary(met$elev)
+summary(met$wind.sp)
+#Generate a date variable using the functions as.Date() (hint: You will need the following to create a date paste(year, month, day, sep = "-")).
+library(lubridate)
+met= met[ , ymd := as.Date(paste(year, month, day, sep = "-"))]
+met[, table(week(ymd))]
+met= met[week(ymd)==31]
+#Compute the mean by station of the variables temp, rh, wind.sp, vis.dist, dew.point, lat, lon, and elev.
+met[, .(
+  temp= max(temp, na.rm=T),
+  rh= max(rh, na.rm=T),
+  wind.sp= max(wind.sp, na.rm=T),
+  vis.dist= max(vis.dist, na.rm=T), 
+  dew.point= max(dew.point, na.rm=T), 
+  lat= max(lat, na.rm=T), 
+  lon= max(lon, na.rm=T), 
+  elev= max(elev, na.rm=T)
+)]
+met_avg= met[, .(
+  temp= mean(temp, na.rm=T),
+  rh= mean(rh, na.rm=T),
+  wind.sp= mean(wind.sp, na.rm=T),
+  vis.dist= mean(vis.dist, na.rm=T), 
+  dew.point= mean(dew.point, na.rm=T), 
+  lat= mean(lat, na.rm=T), 
+  lon= mean(lon, na.rm=T), 
+  elev= mean(elev, na.rm=T)
+), by= 'USAFID']
+#create a region variable
+library(dtplyr)
+library(data.table)
+met_avg= met_avg[ , region := fifelse(lon>= -98 & lat> 39.71, "NE",
+                 fifelse(lon< -98 & lat> 39.71, "NW",
+                 fifelse(lon< -98 & lat<= 39.71, "SW","SE")))
+     ]
+table(met_avg$region)
+#create a categorical variable for elevation
+met_avg[, elev_cat := fifelse(elev >252, "high", "low")]
+```
+
+## 3. Use geom_violin to examine the wind speed and dew point temperature by region
+```{r}
+library(ggplot2)
+met_avg[!is.na(region)] %>% 
+  ggplot() + 
+  geom_violin(mapping = aes(x = 1, y = dew.point, color=region, fill= region)) + 
+  facet_wrap(~ region, nrow = 1)
+```
+Thus, the highest dew point temp is in se.
+```{r}
+met_avg[!is.na(region) & !is.na(wind.sp)] %>% 
+  ggplot() + 
+  geom_violin(mapping = aes(x = 1, y = wind.sp, color=region, fill= region)) + 
+  facet_wrap(~ region, nrow = 2)
+```
+Thus, ne has the highest wind speed
+
+##4. Use geom_jitter with stat_smooth to examine the association between dew point temperature and wind speed by region
+```{r}
+met_avg[!is.na(region) & !is.na(wind.sp)] %>% 
+  ggplot(mapping = aes(x = wind.sp, y = dew.point)) + 
+  geom_point(mapping= aes(color= region)) + 
+  geom_smooth(method= lm, mapping= aes(linetype= region))+
+  facet_wrap(~ region, nrow = 2)
+```
+
+## 5. Use geom_bar to create barplots of the weather stations by elevation category coloured by region
+
+## 6. Use stat_summary to examine mean dew point and wind speed by region with standard deviation error bars
+```{r}
+met_avg[!is.na(dew.point)] %>%
+  ggplot(mapping = aes(x = region, y = dew.point)) + 
+  stat_summary(fun.data= mean_sdl, geom= "errorbar")+
+  stat_summary(fun.data= mean_sdl)
+```
+## 7. 
+```{r}
+library(leaflet)
+rh.pal <- colorNumeric(c('darkgreen','goldenrod','brown'), domain=met_avg$rh)
+rh.pal
+top10rh= met_avg[rank(-rh) <=10][1:10]
+
+```
+
+## 8.Use a ggplot extension
+```{r}
+rhmap <- leaflet(met_avg) %>% 
+  # The looks of the Map
+  addProviderTiles('CartoDB.Positron') %>% 
+  # Some circles
+  addCircles(
+    lat = ~lat, lng=~lon,
+                                                  # HERE IS OUR PAL!
+    label = ~paste0(rh), color = ~ rh.pal(rh),
+    opacity = 1, fillOpacity = 1, radius = 500
+    ) %>%
+  # And a pretty legend
+  addLegend('bottomleft', pal=rh.pal, values=met_avg$rh,
+          title='Releative Hunid.', opacity=1)
+rhmap
+```
+
