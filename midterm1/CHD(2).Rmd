@@ -1,0 +1,125 @@
+---
+title: "Analysis for Risk of Coronary Hearth Disease"
+output: html_document
+date: '2022-10-15'
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(tableone)
+knitr::opts_chunk$set(echo = TRUE,message = F,warning = F)
+```
+
+# Introduction
+
+The Western Collaborative Group Study (WCGS), a prospective cohort studye, recruited middle-aged men (ages 39 to 59) who were employees of 10 California companies and collected data on 3154 individuals during the years 1960-1961. These subjects were primarily selected to study the relationship between behavior pattern and the risk of coronary hearth disease (CHD). A number of other risk factors were also measured to provide the best possible assessment of the CHD risk associated with behavior type. Additional variables collected include age, height, weight, systolic blood pressure, diastolic blood pressure, cholesterol, smoking, and corneal arcus.
+
+The dataset includes the following columns (columns irrelevant are removed):
+
+ - chd69: Coronary heart disease event (0 = none; 1 = yes), dependent variable
+ 
+ - age: Age (age in years)
+ 
+ - arcus: Corneal arcus (0 = none; 1 = yes)
+ 
+ - behpat: Behavior pattern 
+ 
+ - chol: Cholesterol (mg/100 ml)
+ 
+ - dbp: Diastolic blood pressure (mm Hg)
+ 
+ - dibpat: Dichotomous behavior pattern
+
+ - height: Height (height in inches)
+ 
+ - ncigs: Smoking (Cigarettes/day)
+ 
+ - sbp: Systolic blood pressure (mm Hg)
+
+ - smoke: Smoking state
+ 
+ - weight: Weight (weight in pounds) 
+ 
+The main objective of this report is to find the important factors which affects the risk of Coronary heart disease event. To finish these tasks, some exploratory analysis and visualizations are performed.
+ 
+# Methods and Result
+
+The data set can be found at website https://rdrr.io/cran/epitools/man/wcgs.html.
+
+## Data cleaning
+
+```{r}
+dat<-read.csv('wcgs.csv')
+dat<-dat%>%select(-id,-t1,-time169,-typchd69,-uni)
+barplot(apply(is.na(dat),2,sum),horiz = T,las=1,
+        xlab='Counts of Missing values',
+        main='Counts of Missing values for each variable')
+dat<-dat%>%na.omit()
+```
+
+The data contains some missing values as the figure above shown. The variable `chol` contains 12 missing values and `arcus` contains 2 missing values. The total number of observations are 3154, which indicates that only a few observations contains missing values. Thus observations with missing values are removed.
+
+## Descriptive statistic
+
+```{r}
+res<-CreateTableOne(colnames(dat)[-4],strata="chd69",data=dat,test=F,
+                    factorVars = 'arcus')
+kableone(res,caption='Descriptive Statistic',digits = 3,nonnormal='ncigs',
+         align='c')
+```
+
+In this section, the summarily descriptive statistics are constructed, in which the categorical variables such as `behpat`, `dibpat` and `smoke` are summarized as counts and proportion of each level, the approximately normally distributed numeric variables are summarized as mean and standard deviance. The ncigs is serious right skewed distributed, thus it is summarized as median and IQR.
+
+## Exploratory Analysis
+
+**Single Variable Analysis**
+
+According to the statistic table, proportion of Corneal arcus is different obviously between with and without CHD. Besides, behpat, dibpat and smoke can also affect the proportion of CHD according to the table above.Thus to show the relationship between these categorical variable and CHD, proportion bar plots are constructed as:
+
+```{r}
+dat%>%select(arcus,behpat,dibpat,smoke,chd69)%>%
+  mutate(arcus=ifelse(arcus==1,'Yes','No'))%>%
+  pivot_longer(cols=!chd69)%>%
+  ggplot(aes(chd69,fill=value))+geom_bar(position = 'fill')+
+  labs(y='Proportion')+
+  facet_wrap(vars(name))+
+  guides(fill='none')
+```
+
+As a result, the proportion of each levels for these categorical are quite different between observations with CHD and without CHD. Thus these categorical may affect the risk of CHD.
+
+Besides, numerical variables are also the potential risk factors affecting CHD, which are also explored and visualized as box plots.
+
+```{r}
+dat%>%select(-arcus,-behpat,-dibpat,-smoke,chd69)%>%
+  pivot_longer(cols=!chd69)%>%
+  ggplot(aes(x=chd69,y=value))+geom_boxplot(fill='skyblue')+
+  labs(y='')+
+  facet_wrap(vars(name),scales = 'free')
+```
+
+As a result, the age of people with CDH is older than those without CDH, which indicates that the old people may suffer from higher risk for CHD. Similarly, according to the figure, the people with high cholesterol and blood pressure (both dpb and spb) are more likely suffer from CHD. Besides, Smoking is also a risk factor of CHD, which indicates that more cigarettes used, high probability of CHD is.
+
+**Interaction**
+
+Although visualization in single variable way would reveal which variables are potential risk factors of CHD, the performance of each factors in sub-groups may be different. Thus to investigate that whether the risk factors performed differently among sub-groups (such as with people with different Dichotomous behavior pattern).
+
+```{r}
+dat%>%select(-arcus,-behpat,-smoke,chd69)%>%
+  pivot_longer(cols=!c(chd69,dibpat))%>%
+  ggplot(aes(fill=chd69,y=value,x=dibpat))+geom_boxplot()+
+  labs(y='')+
+  facet_wrap(vars(name),scales = 'free')
+
+dat%>%select(-arcus,-dibpat,-smoke,chd69)%>%
+  pivot_longer(cols=!c(chd69,behpat))%>%
+  ggplot(aes(fill=chd69,y=value,x=behpat))+geom_boxplot()+
+  labs(y='')+
+  facet_wrap(vars(name),scales = 'free')
+```
+
+As shown above, dibpat does not change the performance of these numeric factors due to the patterns are not different between type A and B. However, while behpat=B4, the age of people with CHD is not different with those without CHD. In other words, for people with behpat=B4, age is not a risk factor anymore. Besides, weight is not different obviously between people with and without CHD, but while behpat=B4, weight of people with CHD is higher obviosly than those without CHD. In other words, weight is a risk factor for people with behpat=B4.
+
+# Conclusion
+
+Finally, the risk factors of CHD are revealed by exploary visualization analysis. According to the result, the risk factors include Corneal arcus, Behavior pattern , Dichotomous behavior pattern, smoke (as well as number of Cigarettes), age, Cholesterol and blood pressure (sbp and dbp). Besides, Behavior pattern would also affect the relationship between CHD and age/weight.
