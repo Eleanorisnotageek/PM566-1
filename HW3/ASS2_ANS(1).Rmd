@@ -1,0 +1,149 @@
+---
+title: "Assignment 02"
+output: html_document
+date: '2022-11-05'
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Data Wrangling
+
+```{r}
+reginal<-read.csv('chs_regional.csv')
+individual<-read.csv('chs_individual.csv')
+dat<-individual%>%left_join(reginal)
+```
+
+## 1.
+
+```{r}
+# fill the NAs 
+dat1<-dat%>%group_by(male,hispanic)%>%
+  mutate_if(function(x) any(is.na(x)),function(x)
+  {if (length(unique(x))>3) {x[is.na(x)]<-mean(x,na.rm=T)}
+    if (length(unique(x))<=3) {x[is.na(x)]<-ifelse(mean(x,na.rm=T)>0.5,1,0)}
+    return(x)})%>%ungroup()
+```
+
+In this section, smoke and gasstove are binary variable, thus modes are used as to fill missing values.
+
+## 2-3
+
+```{r}
+dat1<-dat1%>%
+  mutate(
+    # Question 2
+    obesity_level=cut(bmi,
+                           breaks=c(-Inf,14,22,24,Inf),
+                           labels=c('underweight BMI',
+                                    'normal BMI',
+                                    'overweight BMI',
+                                    'obese BMI')),
+    # Question 3
+    smoke_gas_exposure=paste0(smoke,gasstove))
+```
+
+The summary table about BMI and total number of observations per category:
+
+```{r}
+summary(dat1$bmi)
+table(dat1$obesity_level)
+```
+
+The counts for four categories of combination for smoke and gasstove:
+
+```{r}
+table(dat1$smoke_gas_exposure)
+```
+
+## 4
+
+```{r}
+dat1%>%group_by(townname)%>%summarise(fev_mean=mean(fev),
+                                    sd_fev=sd(fev),
+                                    asthma_mean=mean(asthma),
+                                    sd_asthma=sd(asthma))
+
+dat1%>%group_by(male)%>%summarise(fev_mean=mean(fev),
+                                    sd_fev=sd(fev),
+                                    asthma_mean=mean(asthma),
+                                    sd_asthma=sd(asthma))
+
+dat1%>%group_by(obesity_level)%>%summarise(fev_mean=mean(fev),
+                                    sd_fev=sd(fev),
+                                    asthma_mean=mean(asthma),
+                                    sd_asthma=sd(asthma))
+
+dat1%>%group_by(smoke_gas_exposure)%>%summarise(fev_mean=mean(fev),
+                                    sd_fev=sd(fev),
+                                    asthma_mean=mean(asthma),
+                                    sd_asthma=sd(asthma))
+```
+
+# EDA
+
+## 1
+
+```{r}
+dat1%>%ggplot(aes(x=bmi,y=fev))+
+  geom_point()+
+  geom_smooth(method='lm')+
+  facet_wrap(vars(townname))
+```
+
+## 2
+
+```{r}
+library(RColorBrewer)
+dat1%>%ggplot(aes(fev,group=obesity_level))+
+  geom_histogram(aes(fill=obesity_level))+
+  scale_fill_manual(values=2:5)
+
+dat1%>%ggplot(aes(fev,group=smoke_gas_exposure))+
+  geom_histogram(aes(fill=smoke_gas_exposure))+
+  scale_fill_manual(values=2:5)
+```
+
+## 3
+
+```{r}
+dat1%>%ggplot(aes(x=smoke_gas_exposure,y=bmi,fill=smoke_gas_exposure))+
+  geom_bar(stat = 'identity')+
+  scale_fill_manual(values=2:5)
+```
+
+## 4
+
+```{r}
+# FEV and BMI
+dat1%>%ggplot(aes(x=bmi,y=fev))+geom_point()+geom_smooth(method='lm')+
+  geom_text(aes(y=1250,x=35),
+            label=paste0('Correlation=',round(cor(dat1$bmi,dat1$fev),2)))
+
+# FEV by smoke/gas exposure category
+dat1%>%ggplot(aes(x=smoke_gas_exposure,y=fev))+
+  geom_boxplot(aes(fill=smoke_gas_exposure),outlier.alpha=0)+
+  geom_jitter(alpha=0.3)+
+  scale_fill_manual(values=2:5)
+```
+
+## 5
+
+```{r}
+library(leaflet)
+reginal%>%leaflet()%>%addTiles()%>%
+  addCircleMarkers(~lon, ~lat, radius = ~pm25_mass)
+```
+
+## 6
+
+```{r}
+dat1%>%ggplot(aes(x=fev,y=pm25_mass))+
+  geom_point()+geom_smooth(method = 'lm')+
+  geom_text(aes(x=2500,y=17),
+            label=paste0('Correlation=',
+                         round(cor(dat1$pm25_mass,dat1$fev),2)))
+```
