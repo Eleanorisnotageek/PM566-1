@@ -1,0 +1,117 @@
+---
+title: "lab6"
+author: "Eleanor Bi"
+date: "12/13/2022"
+output: html_document
+---
+```{r}
+library(webshot)
+webshot::install_phantomjs()
+```
+
+```{r read-data, cache= TRUE}
+if (!file.exists("mtsamples.csv")) {
+  download.file(
+    url = "https://raw.githubusercontent.com/USCbiostats/data-science-data/master/00_mtsamples/mtsamples.csv",
+    "mtsamples.csv", method = "libcurl", timeout  = 60)
+}
+mts <- read.csv("mtsamples.csv")
+str(mts)
+mts= as_tibble(mts)
+mts
+```
+## Question 1: What specialties do we have?
+We can use count() from dplyr to figure out how many different catagories do we have? Are these catagories related? overlapping? evenly distributed?
+```{r mdeical_specialties}
+specialties=
+  mts %>%
+  count(medical_specialty)
+specialties %>%
+  arrange(desc(n)) %>%
+knitr::kable()
+```
+```{r barplot-of-specialty-counts}
+specialties %>%
+  top_n(10) %>%
+  ggplot( aes(x= n, y= fct_reorder(medical_specialty, n))) +
+  geom_col()
+```
+they are not all uniform.
+
+## Question 2
+Explain what we see from this result. Does it makes sense? What insights (if any) do we get?
+```{r token-transcription, cache=TRUE}
+mts %>%
+  unnest_tokens(word, transcription) %>%
+  #anti_join(stop_words, by = c("word")) %>%
+  count(word, sort = TRUE) %>%
+  top_n(20, n) %>%
+  ggplot(aes(n, fct_reorder(word, n))) +
+  geom_col()
+```
+We can found that there are a lot of stop words here, non-specific to medical text.
+
+## Question 3: Redo analysis in Q2, amd remove stopwords
+```{r, cache=TRUE}
+mts %>%
+  unnest_tokens(word, transcription) %>%
+  count(word, sort = TRUE) %>%
+  anti_join(stop_words, by = c("word")) %>%
+  # use regular expression to filter out numbers (not match 0-9)
+  filter( !grepl(pattern= "^[0-9]+$", x= word)) %>%
+  top_n(20, n) %>%
+  ggplot(aes(n, fct_reorder(word, n))) +
+  geom_col()
+```
+
+## Question 4: repeat question 2, but this time tokenize into bi-grams. how does the result change if you look at tri-grams?
+```{r bigrams-transcription, cache=TRUE}
+mts %>%
+  unnest_ngrams(bigram, transcription, n=2) %>%
+  count(bigram, sort = TRUE) %>%
+  top_n(20, n) %>%
+  ggplot(aes(n, fct_reorder(bigram, n))) +
+  geom_col()
+```
+```{r trigrams-transcription, cache=TRUE}
+mts %>%
+  unnest_ngrams(trigram, transcription, n=3) %>%
+  count(trigram, sort = TRUE) %>%
+  top_n(20, n) %>%
+  ggplot(aes(n, fct_reorder(trigram, n))) +
+  geom_col()
+```
+The top 20 trigrams seemed to find a few more medical word group than bigrams.
+
+## Question 5
+Using the results you got from questions 4. Pick a word and count the words that appears after and before it.
+```{r bigrams-transcription-nextword, cache=TRUE}
+ptbigram =
+  mts %>%
+  unnest_ngrams(bigram, transcription, n=2) %>%
+  separate(bigram, into = c("word1", "word2"), sep = " ") %>%
+  select(word1, word2) %>%
+  filter(word1 == "patient" | word2 == "patient")
+```
+Words appearing before patient:
+```{r before-patient} 
+ptbigram %>%
+  filter(word2 == "patient") %>%
+  count(word1, sort=T) %>%
+  anti_join(stop_words, by= c("word1"= "word")) %>%
+  top_n(10) %>%
+knitr::kable()
+```
+Words appearing after patient:
+```{r after-patient} 
+ptbigram %>%
+  filter(word1 == "patient") %>%
+  count(word2, sort=T) %>%
+  anti_join(stop_words, by= c("word2"= "word")) %>%
+  top_n(10) %>%
+knitr::kable()
+```
+
+
+
+
