@@ -1,0 +1,149 @@
+---
+title: "Lab5"
+author: "Eleanor Bi"
+date: "12/13/2022"
+output: html_document
+---
+```{r}
+#run all needed packages
+library(data.table)
+library(dtplyr)
+library(dplyr)
+library(R.utils)
+library(tidyverse)
+library(lubridate)
+```
+
+```{r read-data, cache= TRUE}
+if (!file.exists("met_all.gz"))
+download.file(
+    url = "https://raw.githubusercontent.com/USCbiostats/data-science-data/master/02_met/met_all.gz",
+    destfile = "met_all.gz",
+    method   = "libcurl",
+    timeout  = 60
+    )
+met <- data.table::fread("met_all.gz")
+```
+```{r}
+met <- met[temp>-17][elev==9999.0,elve := NA]
+```
+
+```{r}
+# Download the data
+stations <- fread("ftp://ftp.ncdc.noaa.gov/pub/data/noaa/isd-history.csv")
+stations[, USAF := as.integer(USAF)]
+
+# Dealing with NAs and 999999
+stations[, USAF   := fifelse(USAF == 999999, NA_integer_, USAF)]
+stations[, CTRY   := fifelse(CTRY == "", NA_character_, CTRY)]
+stations[, STATE  := fifelse(STATE == "", NA_character_, STATE)]
+
+# Selecting the three relevant columns, and keeping unique records
+stations <- unique(stations[, list(USAF, CTRY, STATE)])
+
+# Dropping NAs
+stations <- stations[!is.na(USAF)]
+
+# Removing duplicates
+stations[, n := 1:.N, by = .(USAF)]
+stations <- stations[n == 1,][, n := NULL]
+```
+```{r}
+met <-merge(
+  # Data
+  x     = met,      
+  y     = stations, 
+  # List of variables to match
+  by.x  = "USAFID",
+  by.y  = "USAF", 
+  # Which obs to keep?
+  all.x = TRUE,      
+  all.y = FALSE
+  ) 
+```
+
+##Question 1: Representative station for the US
+```{r, echo=FALSE}
+station_averages <-
+  met[, .(
+  temp = mean(temp, na.rm=T),
+  wind.sp = mean(wind.sp, na.rm=T),
+  atm.press = mean(atm.press, na.rm=T)
+), by = "USAFID"]
+```
+
+```{r}
+statemeds <- station_averages[, .(
+  temp50 = median(temp,na.rm=T),
+  windsp50 = median(wind.sp, na.rm=T),
+  atmpress50 = median(atm.press, na.rm=T)
+)]
+```
+
+```{r}
+station_averages[ ,
+                  temp_dist50 := abs(temp - statemeds$temp50)][order(temp_dist50)]
+station_averages[which.min(temp_dist50)]
+```
+Thus, it maches the result.
+```{r}
+station_averages[ ,
+                  windsp_dist50 := abs(wind.sp - statemeds$windsp50)][order(windsp_dist50)]
+station_averages[which.min(windsp_dist50)]
+```
+It matches the result.
+
+```{r}
+station_averages[ ,
+                  atmpress_dist50 := abs(atm.press - statemeds$atmpress50)][order(atmpress_dist50)]
+station_averages[which.min(atmpress_dist50)]
+```
+This also matches the result.
+
+## Question 2: Representative station per state
+```{r}
+station_averages <-
+  met[, .(
+  temp = mean(temp, na.rm=T),
+  wind.sp = mean(wind.sp, na.rm=T),
+  atm.press = mean(atm.press, na.rm=T)
+), by = .(USAFID,STATE)]
+statemeds <- station_averages[, .(
+  temp50 = median(temp,na.rm=T),
+  windsp50 = median(wind.sp, na.rm=T)
+), by = STATE]
+statemeds
+station_averages <-merge(
+  # Data
+  x     = station_averages,      
+  y     = statemeds, 
+  # List of variables to match
+  by.x  = "STATE",
+  by.y  = "STATE", 
+  # Which obs to keep?
+  all.x = TRUE,      
+  all.y = FALSE
+  ) 
+station_averages[, temp_dist_state50 := temp - temp50]
+station_averages[, windsp_dist_state50 := wind.sp - windsp50]
+station_averages
+```
+```{r}
+station_averages[, eucdist := temp_dist_state50^2 + windsp_dist_state50^2]
+station_averages[, .(
+                   rep50 = min(eucdist)), by = STATE]
+repstation <- station_averages[, .(
+                                 eucdist = min(eucdist, na.rm=T)), by=STATE]
+state <-merge(
+  # Data
+  x     = station_averages,      
+  y     = repstation, 
+  # List of variables to match
+  by.x  = c("eucdist", "STATE"),
+  by.y  = c("eucdist", "STATE"),
+  # Which obs to keep?
+  all.x = FALSE,      
+  all.y = TRUE
+  ) 
+```
+
