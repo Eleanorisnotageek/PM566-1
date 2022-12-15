@@ -1,0 +1,14 @@
+kableExtra
+rvest
+httr
+tidyverse
+ggplot2
+tibble
+tidyr
+readr
+purrr
+dplyr
+stringr
+forcats
+tidytext
+dtplyr
