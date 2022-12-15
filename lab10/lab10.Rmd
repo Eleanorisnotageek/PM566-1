@@ -1,0 +1,208 @@
+---
+title: "lab 10"
+author: "Eleanor Bi"
+date: "2022-12-15"
+output: html_document
+---
+```{r}
+library(RSQLite)
+library(DBI)
+
+# Initialize a temporary in memory database
+con <- dbConnect(SQLite(), ":memory:")
+
+# Download tables
+actor <- read.csv("https://raw.githubusercontent.com/ivanceras/sakila/master/csv-sakila-db/actor.csv")
+rental <- read.csv("https://raw.githubusercontent.com/ivanceras/sakila/master/csv-sakila-db/rental.csv")
+customer <- read.csv("https://raw.githubusercontent.com/ivanceras/sakila/master/csv-sakila-db/customer.csv")
+payment <- read.csv("https://raw.githubusercontent.com/ivanceras/sakila/master/csv-sakila-db/payment_p2007_01.csv")
+
+# Copy data.frames to database
+dbWriteTable(con, "actor", actor)
+dbWriteTable(con, "rental", rental)
+dbWriteTable(con, "customer", customer)
+dbWriteTable(con, "payment", payment)
+
+dbListTables(con)
+```
+## Exercise 1
+Retrive the actor ID, first name and last name for all actors using the actor table. Sort by last name and then by first name.
+```{sql, connection=con}
+SELECT actor_id, first_name, last_name
+FROM actor
+ORDER by last_name, first_name
+LIMIT 15
+```
+```{r}
+dbGetQuery(con,"
+SELECT actor_id, first_name, last_name
+FROM actor
+ORDER by last_name, first_name
+LIMIT 15
+")
+```
+## Exercise 2
+Retrive the actor ID, first name, and last name for actors whose last name equals ‘WILLIAMS’ or ‘DAVIS’.
+```{r}
+dbGetQuery(con,"
+SELECT actor_id, first_name, last_name
+FROM actor 
+WHERE last_name IN ('WILLIAMS', 'DAVIS')
+ORDER BY last_name
+")
+```
+## Exercise 3
+Write a query against the rental table that returns the IDs of the customers who rented a film on July 5, 2005 (use the rental.rental_date column, and you can use the date() function to ignore the time component). Include a single row for each distinct customer ID.
+```{r}
+dbGetQuery(con,"
+           PRAGMA table_info(rental)
+           "
+)
+```
+```{r}
+dbGetQuery(con,"
+SELECT DISTINCT customer_id, rental_date
+FROM rental
+WHERE date(rental_date) = '2005-07-05'
+")
+```
+```{r}
+dbGetQuery(con,"
+SELECT DISTINCT customer_id,
+COUNT (*) AS N
+FROM rental
+WHERE date(rental_date) = '2005-07-05'
+GROUP BY customer_id
+")
+```
+## Exercise 4.1
+Construct a query that retrives all rows from the payment table where the amount is either 1.99, 7.99, 9.99.
+```{r}
+dbGetQuery(con,"
+           PRAGMA table_info(payment)
+           "
+)
+```
+```{r}
+dbGetQuery(con,"
+SELECT *
+FROM payment
+WHERE amount IN (1.99, 7.99, 9.99)
+LIMIT 15
+")
+```
+## Exercise 4.2
+Construct a query that retrives all rows from the payment table where the amount is greater then 5
+```{r}
+dbGetQuery(con,"
+SELECT *
+FROM payment
+WHERE amount >5
+LIMIT 15
+")
+```
+
+## Exercise 4.3
+Construct a query that retrives all rows from the payment table where the amount is greater then 5 and less then 8
+```{r}
+dbGetQuery(con,"
+SELECT *
+FROM payment
+WHERE amount >5 AND amount <8
+LIMIT 15
+")
+```
+
+## Exercise 5
+Retrive all the payment IDs and their amount from the customers whose last name is ‘DAVIS’.
+```{r}
+dbGetQuery(con,"
+           PRAGMA table_info(customer)
+           "
+)
+```
+```{r}
+dbGetQuery(con,"
+SELECT c.customer_id, c.last_name, p.payment_id, p.amount
+FROM customer AS c INNER JOIN payment AS p
+  ON c.customer_id = p.customer_id
+  WHERE c.last_name IN ('DAVIS')
+/* WHERE c.last_name == 'DAVIS' */  /* This is a comment */
+")
+```
+
+## Exercise 6.2
+Use COUNT(*) and GROUP BY to count the number of rentals for each customer_id
+```{r}
+dbGetQuery(con,"
+SELECT customer_id, COUNT(*) AS count
+FROM rental
+GROUP BY customer_id
+LIMIT 15
+")
+```
+
+## Exercise 6.3
+Repeat the previous query and sort by the count in descending order
+```{r}
+dbGetQuery(con,"
+SELECT customer_id, COUNT(*) AS count
+FROM rental
+GROUP BY customer_id
+ORDER BY count DESC
+LIMIT 15
+")
+```
+
+## Exercise 6.4
+Repeat the previous query but use HAVING to only keep the groups with 40 or more.
+```{r}
+dbGetQuery(con,"
+SELECT customer_id, COUNT(*) AS count
+FROM rental
+GROUP BY customer_id
+HAVING count >=40
+ORDER BY count DESC
+")
+```
+
+## Exercise 7.1
+Modify the above query to do those calculations for each customer_id
+```{r}
+dbGetQuery(con,"
+SELECT customer_id,
+       MAX(amount) AS maxpayment,
+       MIN(amount) AS minpayment,
+       AVG(amount) AS avgpayment,
+       SUM(amount) AS sumpayment
+FROM payment
+GROUP BY customer_id
+LIMIT 15
+")
+```
+
+## Exercise 7.2
+Modify the above query to only keep the customer_ids that have more then 5 payments
+
+
+* Run the following chunk to disconnect from the connection.
+```{r}
+# clean up
+#dbDisconnect(con)
+dbGetQuery(con,"
+SELECT customer_id,
+       COUNT (*)  AS N,
+       MAX(amount) AS maxpayment,
+       MIN(amount) AS minpayment,
+       AVG(amount) AS avgpayment,
+       SUM(amount) AS sumpayment
+FROM payment
+GROUP BY customer_id
+HAVING N >5
+")
+```
+ ## Clean up
+Run the following chunk to disconnect from the connection.
+```{r}
+dbDisconnect(con)
+```
